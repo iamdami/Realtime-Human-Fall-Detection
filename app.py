@@ -1,3 +1,5 @@
+# 사람이 파란색으로 탐지되는 문제 수정중
+
 from flask import Flask, request, render_template
 import cv2
 import os
@@ -19,7 +21,7 @@ with open(class_path, 'r') as f:
     class_names = [cname.strip() for cname in f.readlines()]
 
 # 모델 로드
-model = attempt_load(weights_path, map_location=device)  # map_location 옵션 추가
+model = attempt_load(weights_path, device=device)
 model.names = class_names  # 모델에 클래스 이름 설정
 model.eval()
 
@@ -57,12 +59,10 @@ def detect():
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             frame_resized = cv2.resize(frame, (640, 640))
-            frame_resized = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)  # BGR -> RGB
             frame_resized = np.transpose(frame_resized, (2, 0, 1))  # (H, W, C) -> (C, H, W)
             frame_resized = (frame_resized / 255.0).astype(np.float32)  # 이미지를 0~1 범위로 정규화
 
-            results = model(torch.from_numpy(frame_resized.astype(np.float32)).unsqueeze(0).to(device))
-
+            results = model(torch.from_numpy(frame_resized).unsqueeze(0).to(device))
 
             # YOLOv5 모델을 사용하여 쓰러진 사람 탐지
             # 쓰러진 사람이 있는 경우
