@@ -1,12 +1,12 @@
-# 사람이 파란색으로 탐지되는 문제 수정중
-
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, send_file
 import cv2
 import os
 import torch
 import numpy as np
 from yolov5.models.experimental import attempt_load
 from yolov5.utils.general import non_max_suppression
+from torchvision.transforms import functional as F
+from PIL import Image
 
 app = Flask(__name__)
 
@@ -46,8 +46,8 @@ def detect():
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         # 비디오 저장하기 위한 writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter('output.mp4', fourcc, fps, (width, height))
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        out = cv2.VideoWriter('output.avi', fourcc, fps, (width, height))
 
         while cap.isOpened():
             # 비디오 프레임 읽기
@@ -55,23 +55,26 @@ def detect():
             if not ret:
                 break
 
-            # 이미지 색상공간 변경 (BGR -> RGB)
+            # 이미지 색상공간 변경 (BGR -> RGB) 및 채널 수 변경
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = cv2.resize(frame, (640, 640))
 
-            frame_resized = cv2.resize(frame, (640, 640))
-            frame_resized = np.transpose(frame_resized, (2, 0, 1))  # (H, W, C) -> (C, H, W)
-            frame_resized = (frame_resized / 255.0).astype(np.float32)  # 이미지를 0~1 범위로 정규화
+            # PIL 이미지로 변환
+            frame_pil = Image.fromarray(frame)
 
-            results = model(torch.from_numpy(frame_resized).unsqueeze(0).to(device))
+            # 객체 탐지 수행
+            frame_resized = F.to_tensor(frame_pil).unsqueeze(0).to(device)
 
-            # YOLOv5 모델을 사용하여 쓰러진 사람 탐지
+            results = model(frame_resized)
+
+
+            # YOLOv5 모델 사용하여 쓰러진 사람 탐지
             # 쓰러진 사람이 있는 경우
             if 'Fall Detected' in class_names:
                 person_results = results.pandas().xyxy[0] # 모든 클래스에 대한 결과에서 첫 번째 클래스의 탐지 결과만 가져옴
                 person_results = person_results[person_results['name'] == 'Fall Detected'] # 'Fall Detected' 클래스에 대한 결과만 추출
                 person_results = non_max_suppression(person_results, 0.3, 0.5) # Non-Maximum Suppression 적용
 
-                # 쓰러진 사람이 있는 경우
                 if person_results[0] is not None:
                     # 결과에서 바운딩 박스와 확률 추출
                     boxes = person_results[0][:, :4]
@@ -92,7 +95,7 @@ def detect():
         out.release()
 
         # 생성된 비디오 파일 반환
-        return open('output.mp4', 'rb').read()
+        return send_file('output.avi', mimetype='video/avi')
 
     return render_template('index.html')
 
